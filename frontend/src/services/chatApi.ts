@@ -1,5 +1,5 @@
 import type { ChatMessage } from '../types/chat'
-import type { PromptInspection } from '../types/roleplay'
+import type { ContextMeterData, PromptInspection } from '../types/roleplay'
 
 const CHAT_ENDPOINT = '/api/chat'
 const CONVERSATIONS_ENDPOINT = '/api/conversations'
@@ -148,6 +148,14 @@ export async function getPromptInspection(id: string): Promise<PromptInspection>
   )
   if (!response.ok) throw new Error(await readError(response))
   return response.json() as Promise<PromptInspection>
+}
+
+export async function getContextMeter(id: string): Promise<ContextMeterData> {
+  const response = await fetch(
+    `${CONVERSATIONS_ENDPOINT}/${encodeURIComponent(id)}/context-meter`,
+  )
+  if (!response.ok) throw new Error(await readError(response))
+  return response.json() as Promise<ContextMeterData>
 }
 
 async function readError(response: Response) {

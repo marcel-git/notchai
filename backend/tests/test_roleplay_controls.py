@@ -270,6 +270,63 @@ class RoleplayControlsTests(unittest.TestCase):
                 )
             self.assertIn("event: done", response.text)
 
+    def test_context_meter_includes_system_history_and_runtime_limit(self) -> None:
+        with TestClient(app) as client:
+            character = client.post(
+                "/characters",
+                json={
+                    "name": "Mira",
+                    "description": "An archivist",
+                    "personality": "Curious",
+                    "background": "A mountain library",
+                    "custom_instructions": "Stay thoughtful",
+                },
+            ).json()
+            conversation_id = str(uuid4())
+            created = client.post(
+                "/conversations",
+                json={
+                    "id": conversation_id,
+                    "character_id": character["id"],
+                    "system_prompt": "Custom system prompt",
+                },
+            )
+            self.assertEqual(created.status_code, 201)
+
+            async def fake_response(_history, _options):
+                yield "An assistant reply."
+
+            with patch("app.services.chat_service.stream_model", fake_response):
+                response = client.post(
+                    "/chat",
+                    json={"conversation_id": conversation_id, "message": "A user message."},
+                )
+            self.assertIn("event: done", response.text)
+
+            with patch(
+                "app.services.context_meter.get_runtime_context_length",
+                return_value=(65536, None),
+            ):
+                meter = client.get(
+                    f"/conversations/{conversation_id}/context-meter"
+                )
+
+            self.assertEqual(meter.status_code, 200)
+            data = meter.json()
+            self.assertEqual(data["runtime_context_length"], 65536)
+            self.assertEqual(
+                [(section["role"], section["label"]) for section in data["sections"]],
+                [
+                    ("system", "System prompt"),
+                    ("user", "User message 1"),
+                    ("assistant", "Assistant message 1"),
+                ],
+            )
+            self.assertEqual(
+                data["estimated_tokens_total"],
+                sum(section["estimated_tokens"] for section in data["sections"]),
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

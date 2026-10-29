@@ -1,3 +1,4 @@
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
@@ -46,3 +47,18 @@ class PromptInspection(BaseModel):
     temperature: float
     top_p: float
     system_prompt: str
+
+
+class ContextSection(BaseModel):
+    label: str
+    role: Literal["system", "user", "assistant"]
+    estimated_tokens: int
+
+
+class ContextMeterData(BaseModel):
+    conversation_id: UUID
+    model_name: str
+    runtime_context_length: int | None
+    context_note: str | None
+    estimated_tokens_total: int
+    sections: list[ContextSection]

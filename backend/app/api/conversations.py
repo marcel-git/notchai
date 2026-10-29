@@ -8,6 +8,7 @@ from fastapi.responses import StreamingResponse
 from app.db.session import session_scope
 from app.schemas.chat import ChatRequest, CreateConversationRequest
 from app.schemas.roleplay import (
+    ContextMeterData,
     ConversationTitleRequest,
     PromptInspection,
     PromptPreviewRequest,
@@ -28,6 +29,7 @@ from app.services.chat_service import (
     prepare_regeneration,
     stream_chat,
 )
+from app.services.context_meter import build_context_meter
 from app.services.prompt_builder import build_system_prompt
 
 router = APIRouter()
@@ -185,6 +187,18 @@ async def inspect_prompt(conversation_id: UUID) -> PromptInspection:
             **settings,
             system_prompt=system_prompt,
         )
+
+
+@router.get(
+    "/conversations/{conversation_id}/context-meter",
+    response_model=ContextMeterData,
+)
+def inspect_context_meter(conversation_id: UUID) -> ContextMeterData:
+    with session_scope() as session:
+        conversation = session.get(ConversationModel, str(conversation_id))
+        if conversation is None:
+            raise HTTPException(status_code=404, detail="Conversation not found.")
+        return build_context_meter(session, conversation)
 
 
 def _streaming_response(run: ChatRun) -> StreamingResponse:

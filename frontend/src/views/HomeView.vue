@@ -6,6 +6,7 @@
     <section class="chat-panel">
       <ChatHeader :conversation-id="activeConversationId" :title="activeConversation?.title ?? ''"
         :character-name="activeCharacterName" :persona-name="activePersonaName" :is-busy="isSending"
+        :context-meter="contextMeter" :context-draft="draft" :context-error="contextError"
         @open-sidebar="isSidebarOpen = true" @rename="renameActiveConversation" @delete="deleteActiveConversation"
         @inspect-prompt="inspectPrompt" />
 
@@ -39,10 +40,13 @@
   import PromptInspector from '../components/chat/PromptInspector.vue'
   import WelcomeScreen from '../components/chat/WelcomeScreen.vue'
   import { useChat } from '../composables/useChat'
-  import { getPromptInspection, getPromptPreview } from '../services/chatApi'
+  import { getContextMeter, getPromptInspection, getPromptPreview } from '../services/chatApi'
   import { listCharacters, listPersonas } from '../services/profileApi'
   import type { CharacterProfile, PersonaProfile } from '../types/profiles'
-  import type { PromptInspection as PromptInspectionData } from '../types/roleplay'
+  import type {
+    ContextMeterData,
+    PromptInspection as PromptInspectionData,
+  } from '../types/roleplay'
 
   const {
     activeConversation,
@@ -73,6 +77,9 @@
   const isPromptLoading = ref(false)
   const promptError = ref('')
   const promptInspection = ref<PromptInspectionData | null>(null)
+  const contextMeter = ref<ContextMeterData | null>(null)
+  const contextError = ref('')
+  let contextRequestSequence = 0
   const isPromptEditable = ref(false)
   const isPromptSaving = ref(false)
   const pendingConversationStart = ref<{ characterId: string; personaId: string | null } | null>(null)
@@ -113,6 +120,46 @@
     () => nextTick(scrollToBottom),
     { flush: 'post' },
   )
+
+  watch(
+    activeConversationId,
+    () => {
+      contextMeter.value = null
+      contextError.value = ''
+      void refreshContextMeter()
+    },
+    { immediate: true },
+  )
+
+  watch([isLoading, isSending], () => void refreshContextMeter())
+
+  async function refreshContextMeter() {
+    const requestSequence = ++contextRequestSequence
+    const conversationId = activeConversationId.value
+    if (!conversationId || isLoading.value || isSending.value) {
+      if (!conversationId) contextMeter.value = null
+      return
+    }
+
+    try {
+      const result = await getContextMeter(conversationId)
+      if (
+        requestSequence === contextRequestSequence &&
+        conversationId === activeConversationId.value
+      ) {
+        contextMeter.value = result
+        contextError.value = ''
+      }
+    } catch (error: unknown) {
+      if (
+        requestSequence === contextRequestSequence &&
+        conversationId === activeConversationId.value
+      ) {
+        contextError.value =
+          error instanceof Error ? error.message : 'Could not load context estimate.'
+      }
+    }
+  }
 
   function selectConversation(id: string) {
     selectChat(id)
