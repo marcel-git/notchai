@@ -4,11 +4,11 @@
       @close="isSidebarOpen = false" @new-chat="startNewChat" @select-conversation="selectConversation" />
 
     <section class="chat-panel">
-      <ChatHeader :conversation-id="activeConversationId" :title="activeConversation?.title ?? ''"
+      <ChatHeader ref="chatHeader" :conversation-id="activeConversationId" :title="activeConversation?.title ?? ''"
         :character-name="activeCharacterName" :persona-name="activePersonaName" :is-busy="isSending"
         :context-meter="contextMeter" :context-draft="draft" :context-error="contextError"
         @open-sidebar="isSidebarOpen = true" @rename="renameActiveConversation" @delete="deleteActiveConversation"
-        @inspect-prompt="inspectPrompt" />
+        @inspect-prompt="inspectPrompt" @open-sensory-board="isSensoryBoardOpen = true" />
 
       <div ref="messageList" class="chat-scroll">
         <ConversationStart v-if="isStartVisible" :characters="characters" :personas="personas"
@@ -27,6 +27,7 @@
     <PromptInspector :open="isPromptInspectorOpen" :loading="isPromptLoading" :error="promptError"
       :inspection="promptInspection" :editable="isPromptEditable" :saving="isPromptSaving"
       @close="closePromptInspector" @confirm="confirmConversationStart" />
+    <SensoryBoard :open="isSensoryBoardOpen" @close="closeSensoryBoard" />
   </main>
 </template>
 
@@ -38,6 +39,7 @@
   import MessageComposer from '../components/chat/MessageComposer.vue'
   import MessageThread from '../components/chat/MessageThread.vue'
   import PromptInspector from '../components/chat/PromptInspector.vue'
+  import SensoryBoard from '../components/chat/SensoryBoard.vue'
   import WelcomeScreen from '../components/chat/WelcomeScreen.vue'
   import { useChat } from '../composables/useChat'
   import { getContextMeter, getPromptInspection, getPromptPreview } from '../services/chatApi'
@@ -67,6 +69,8 @@
   const isSidebarOpen = ref(false)
   const messageList = ref<HTMLElement | null>(null)
   const composer = ref<{ focus: () => void } | null>(null)
+  const chatHeader = ref<{ focusSensoryButton: () => void } | null>(null)
+  const isSensoryBoardOpen = ref(false)
   const isStartFlowOpen = ref(false)
   const isStartingConversation = ref(false)
   const areProfilesLoading = ref(true)
@@ -258,6 +262,11 @@
     isPromptInspectorOpen.value = false
     isPromptEditable.value = false
     pendingConversationStart.value = null
+  }
+
+  function closeSensoryBoard() {
+    isSensoryBoardOpen.value = false
+    nextTick(() => chatHeader.value?.focusSensoryButton())
   }
 
   function sendMessage() {

@@ -76,17 +76,29 @@
         <span><strong>Character:</strong> {{ characterName || 'Unavailable' }}</span>
         <span><strong>Your persona:</strong> {{ personaName || 'Unavailable' }}</span>
       </div>
-      <div v-if="conversationId" class="conversation-tools">
-        <button class="icon-button" aria-label="Rename conversation" :disabled="isBusy" @click="emit('rename')">
-          <BIcon icon="pencil" />
-        </button>
-        <button class="icon-button" aria-label="Inspect assembled prompt" :disabled="isBusy"
-          @click="emit('inspectPrompt')">
-          <BIcon icon="search" />
-        </button>
-        <button class="icon-button delete-button" aria-label="Delete conversation" :disabled="isBusy"
-          @click="emit('delete')">
-          <BIcon icon="trash" />
+      <div class="conversation-tools">
+        <template v-if="conversationId">
+          <button class="icon-button" aria-label="Rename conversation" :disabled="isBusy" @click="emit('rename')">
+            <BIcon icon="pencil" />
+          </button>
+          <button class="icon-button" aria-label="Inspect assembled prompt" :disabled="isBusy"
+            @click="emit('inspectPrompt')">
+            <BIcon icon="search" />
+          </button>
+          <button class="icon-button delete-button" aria-label="Delete conversation" :disabled="isBusy"
+            @click="emit('delete')">
+            <BIcon icon="trash" />
+          </button>
+        </template>
+        <button
+          ref="sensoryButton"
+          class="icon-button sensory-button"
+          type="button"
+          aria-label="Open sensory board"
+          title="Sensory board"
+          @click="emit('openSensoryBoard')"
+        >
+          <BIcon icon="hand-index-thumb" />
         </button>
       </div>
     </div>
@@ -94,7 +106,7 @@
 </template>
 
 <script setup lang="ts">
-  import { computed } from 'vue'
+  import { computed, ref } from 'vue'
   import type { ContextMeterData } from '../../types/roleplay'
   import BIcon from './BIcon.vue'
 
@@ -108,13 +120,21 @@
     contextDraft: string
     contextError: string
   }>()
+  const sensoryButton = ref<HTMLButtonElement | null>(null)
 
   const emit = defineEmits<{
     openSidebar: []
     rename: []
     delete: []
     inspectPrompt: []
+    openSensoryBoard: []
   }>()
+
+  function focusSensoryButton() {
+    sensoryButton.value?.focus()
+  }
+
+  defineExpose({ focusSensoryButton })
 
   type DisplayedSection = {
     key: string
@@ -269,6 +289,10 @@
 
   .delete-button:hover {
     color: #e5a49b;
+  }
+
+  .sensory-button:hover {
+    color: var(--color-gold);
   }
 
   .role-labels strong {
