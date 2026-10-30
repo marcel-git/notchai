@@ -1,5 +1,5 @@
 <template>
-  <main class="chat-shell">
+  <main class="chat-shell" :class="{ 'chat-shell--idle-shake': isIdleShaking }">
     <ChatSidebar :conversations="conversations" :active-conversation-id="activeConversationId" :is-open="isSidebarOpen"
       @close="isSidebarOpen = false" @new-chat="startNewChat" @select-conversation="selectConversation" />
 
@@ -70,6 +70,9 @@
   } = useChat()
 
   const draft = ref('')
+  const isIdleShaking = ref(false)
+  const idleShakeAudio = new Audio('/alarm.MP3')
+  idleShakeAudio.preload = 'auto'
   const isSidebarOpen = ref(false)
   const messageList = ref<HTMLElement | null>(null)
   const composer = ref<{ focus: () => void } | null>(null)
@@ -90,6 +93,8 @@
   const guidanceSavedNotice = ref(false)
   let contextRequestSequence = 0
   let guidanceNoticeTimeout: ReturnType<typeof setTimeout> | null = null
+  let idleDraftTimeout: ReturnType<typeof setTimeout> | null = null
+  let shakeResetTimeout: ReturnType<typeof setTimeout> | null = null
   const isPromptEditable = ref(false)
   const isPromptSaving = ref(false)
   const pendingConversationStart = ref<{ characterId: string; personaId: string | null } | null>(null)
@@ -101,6 +106,45 @@
   )
   const activePersonaName = computed(() =>
     personas.value.find((persona) => persona.id === activeConversation.value?.persona_id)?.name,
+  )
+
+  watch(
+    [
+      draft,
+      activeConversationId,
+      isStartVisible,
+      isSending,
+      isLoading,
+      isPromptInspectorOpen,
+      isSensoryBoardOpen,
+    ],
+    () => {
+      clearIdleShakeTimers()
+      if (
+        !draft.value.trim() ||
+        !activeConversationId.value ||
+        isStartVisible.value ||
+        isSending.value ||
+        isLoading.value ||
+        isPromptInspectorOpen.value ||
+        isSensoryBoardOpen.value
+      ) {
+        return
+      }
+
+      idleDraftTimeout = setTimeout(() => {
+        idleDraftTimeout = null
+        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+        isIdleShaking.value = true
+        void idleShakeAudio.play().catch((error: unknown) => {
+          console.warn('Could not play the idle draft sound.', error)
+        })
+        shakeResetTimeout = setTimeout(() => {
+          isIdleShaking.value = false
+          shakeResetTimeout = null
+        }, 650)
+      }, 30_000)
+    },
   )
 
   onMounted(async () => {
@@ -155,6 +199,8 @@
 
   onUnmounted(() => {
     if (guidanceNoticeTimeout !== null) clearTimeout(guidanceNoticeTimeout)
+    clearIdleShakeTimers()
+    idleShakeAudio.pause()
   })
 
   async function refreshContextMeter() {
@@ -295,6 +341,14 @@
       nextTick(scrollToBottom)
     }
   }
+
+  function clearIdleShakeTimers() {
+    if (idleDraftTimeout !== null) clearTimeout(idleDraftTimeout)
+    if (shakeResetTimeout !== null) clearTimeout(shakeResetTimeout)
+    idleDraftTimeout = null
+    shakeResetTimeout = null
+    isIdleShaking.value = false
+  }
 </script>
 
 <style scoped>
@@ -308,6 +362,35 @@
     background:
       radial-gradient(ellipse at 73% 51%, rgba(48, 74, 54, 0.08), transparent 38%),
       var(--color-bg);
+  }
+
+  .chat-shell--idle-shake {
+    animation: idle-draft-shake 650ms ease-in-out;
+  }
+
+  @keyframes idle-draft-shake {
+    0%,
+    100% {
+      transform: translateX(0);
+    }
+
+    15%,
+    45%,
+    75% {
+      transform: translateX(-5px);
+    }
+
+    30%,
+    60%,
+    90% {
+      transform: translateX(5px);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .chat-shell--idle-shake {
+      animation: none;
+    }
   }
 
   .chat-panel {
