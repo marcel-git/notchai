@@ -31,6 +31,10 @@
         <BIcon icon="sliders" />
         <span>Generation settings</span>
       </RouterLink>
+      <RouterLink class="library-item" to="/guidance" @click="emit('close')">
+        <BIcon icon="journal-text" />
+        <span>Guidance</span>
+      </RouterLink>
     </div>
 
     <div class="history">

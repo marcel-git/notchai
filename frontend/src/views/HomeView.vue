@@ -9,6 +9,9 @@
         :context-meter="contextMeter" :context-draft="draft" :context-error="contextError"
         @open-sidebar="isSidebarOpen = true" @rename="renameActiveConversation" @delete="deleteActiveConversation"
         @inspect-prompt="inspectPrompt" @open-sensory-board="isSensoryBoardOpen = true" />
+      <p v-if="guidanceSavedNotice" class="guidance-saved-notice" role="status" aria-live="polite">
+        Saved to global guidance
+      </p>
 
       <div ref="messageList" class="chat-scroll">
         <ConversationStart v-if="isStartVisible" :characters="characters" :personas="personas"
@@ -25,14 +28,14 @@
         :is-disabled="isLoading" @send="sendMessage" />
     </section>
     <PromptInspector :open="isPromptInspectorOpen" :loading="isPromptLoading" :error="promptError"
-      :inspection="promptInspection" :editable="isPromptEditable" :saving="isPromptSaving"
-      @close="closePromptInspector" @confirm="confirmConversationStart" />
+      :inspection="promptInspection" :editable="isPromptEditable" :saving="isPromptSaving" @close="closePromptInspector"
+      @confirm="confirmConversationStart" />
     <SensoryBoard :open="isSensoryBoardOpen" @close="closeSensoryBoard" />
   </main>
 </template>
 
 <script setup lang="ts">
-  import { computed, nextTick, onMounted, ref, watch } from 'vue'
+  import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
   import ConversationStart from '../components/chat/ConversationStart.vue'
   import ChatHeader from '../components/chat/ChatHeader.vue'
   import ChatSidebar from '../components/chat/ChatSidebar.vue'
@@ -54,6 +57,7 @@
     activeConversation,
     activeConversationId,
     conversations,
+    guidanceSavedCount,
     isLoading,
     isSending,
     loadError,
@@ -83,7 +87,9 @@
   const promptInspection = ref<PromptInspectionData | null>(null)
   const contextMeter = ref<ContextMeterData | null>(null)
   const contextError = ref('')
+  const guidanceSavedNotice = ref(false)
   let contextRequestSequence = 0
+  let guidanceNoticeTimeout: ReturnType<typeof setTimeout> | null = null
   const isPromptEditable = ref(false)
   const isPromptSaving = ref(false)
   const pendingConversationStart = ref<{ characterId: string; personaId: string | null } | null>(null)
@@ -136,6 +142,20 @@
   )
 
   watch([isLoading, isSending], () => void refreshContextMeter())
+
+  watch(guidanceSavedCount, (count, previousCount) => {
+    if (count === previousCount) return
+    guidanceSavedNotice.value = true
+    if (guidanceNoticeTimeout !== null) clearTimeout(guidanceNoticeTimeout)
+    guidanceNoticeTimeout = setTimeout(() => {
+      guidanceSavedNotice.value = false
+      guidanceNoticeTimeout = null
+    }, 4000)
+  })
+
+  onUnmounted(() => {
+    if (guidanceNoticeTimeout !== null) clearTimeout(guidanceNoticeTimeout)
+  })
 
   async function refreshContextMeter() {
     const requestSequence = ++contextRequestSequence
@@ -299,6 +319,22 @@
     flex: 1;
     flex-direction: column;
     overflow: hidden;
+  }
+
+  .guidance-saved-notice {
+    position: absolute;
+    z-index: 4;
+    top: 62px;
+    right: 18px;
+    margin: 2%;
+    padding: 9px 13px;
+    border: 1px solid rgba(126, 170, 131, 0.35);
+    border-radius: 8px;
+    background: rgba(17, 35, 22, 0.96);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+    color: #b6d5b6;
+    font-size: 11px;
+    pointer-events: none;
   }
 
   .chat-scroll {

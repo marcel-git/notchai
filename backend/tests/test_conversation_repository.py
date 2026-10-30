@@ -18,7 +18,7 @@ from sqlalchemy import (
 )
 from sqlmodel import Session, SQLModel
 
-from app.db import session as database
+from app.db import customization, session as database
 from app.db.migrations import upgrade_database
 from app.models import Conversation, Message
 from app.repositories.conversation_repository import (
@@ -31,14 +31,20 @@ from app.repositories.conversation_repository import (
     update_assistant_message,
 )
 from app.services.chat_service import prepare_message, stream_chat
+from app.services.model_service import GuidanceSavedEvent
 
 
 class ConversationRepositoryTests(unittest.TestCase):
     def setUp(self) -> None:
         self.original_engine = database.engine
+        self.original_customization_engine = customization.engine
         self.temporary_directory = tempfile.TemporaryDirectory()
+        directory = Path(self.temporary_directory.name)
         self.engine = database.create_database_engine(
-            Path(self.temporary_directory.name) / "chat.db"
+            directory / "chat.db"
+        )
+        customization.engine = customization.create_customization_engine(
+            directory / "customization.db"
         )
         database.engine = self.engine
         upgrade_database(self.engine)
@@ -48,7 +54,9 @@ class ConversationRepositoryTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.engine.dispose()
+        customization.engine.dispose()
         database.engine = self.original_engine
+        customization.engine = self.original_customization_engine
         self.temporary_directory.cleanup()
 
     def test_persists_conversation_messages_and_model_history(self) -> None:
@@ -123,6 +131,28 @@ class ConversationRepositoryTests(unittest.TestCase):
         self.assertEqual(completed["messages"][1]["status"], "completed")
         self.assertEqual(completed["messages"][1]["content"], "Hello back")
 
+    def test_stream_chat_surfaces_guidance_saved_event_without_rule_text(self) -> None:
+        run = prepare_message(self.conversation_id, "Remember a preference.")
+
+        async def fake_stream(_history, _options):
+            yield GuidanceSavedEvent()
+            yield "I will remember that."
+
+        async def collect_events():
+            return [event async for event in stream_chat(run)]
+
+        with patch("app.services.chat_service.stream_model", fake_stream):
+            events = asyncio.run(collect_events())
+
+        self.assertEqual(
+            events,
+            [
+                ("guidance_saved", {}),
+                ("token", {"token": "I will remember that."}),
+                ("done", {}),
+            ],
+        )
+
     def test_initial_migration_adopts_existing_tables_without_losing_data(self) -> None:
         existing_engine = database.create_database_engine(
             Path(self.temporary_directory.name) / "existing.db"
@@ -194,7 +224,7 @@ class ConversationRepositoryTests(unittest.TestCase):
                 revision = connection.execute(
                     text("SELECT version_num FROM alembic_version")
                 ).scalar_one()
-            self.assertEqual(revision, "0005_conversation_system_prompt")
+            self.assertEqual(revision, "0007_reasoning_setting")
         finally:
             existing_engine.dispose()
 

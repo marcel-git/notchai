@@ -3,6 +3,7 @@ import HomeView from '../views/HomeView.vue'
 import Characters from '../views/Characters.vue'
 import Personas from '../views/Personas.vue'
 import Settings from '../views/Settings.vue'
+import Guidance from '../views/Guidance.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -26,6 +27,11 @@ const router = createRouter({
       path: '/settings',
       name: 'settings',
       component: Settings,
+    },
+    {
+      path: '/guidance',
+      name: 'guidance',
+      component: Guidance,
     },
   ],
 })

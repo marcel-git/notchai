@@ -5,6 +5,8 @@ from sqlmodel import Session
 from app.models.conversation import ChatSettings
 from app.services.model_service import (
     DEFAULT_NUM_PREDICT,
+    DEFAULT_REASONING,
+    DEFAULT_REPEAT_PENALTY,
     DEFAULT_TEMPERATURE,
     DEFAULT_TOP_P,
     MODEL_NAME,
@@ -16,6 +18,8 @@ class GenerationSettingsData(TypedDict):
     num_predict: int
     temperature: float
     top_p: float
+    repeat_penalty: float
+    reasoning: bool
 
 
 def get_generation_settings(session: Session) -> GenerationSettingsData:
@@ -27,6 +31,8 @@ def get_generation_settings(session: Session) -> GenerationSettingsData:
             num_predict=DEFAULT_NUM_PREDICT,
             temperature=DEFAULT_TEMPERATURE,
             top_p=DEFAULT_TOP_P,
+            repeat_penalty=DEFAULT_REPEAT_PENALTY,
+            reasoning=DEFAULT_REASONING,
         )
         session.add(settings)
         session.flush()
@@ -46,6 +52,8 @@ def update_generation_settings(
         settings.num_predict = values["num_predict"]
         settings.temperature = values["temperature"]
         settings.top_p = values["top_p"]
+        settings.repeat_penalty = values["repeat_penalty"]
+        settings.reasoning = values["reasoning"]
     session.flush()
     return _settings_data(settings)
 
@@ -56,4 +64,6 @@ def _settings_data(settings: ChatSettings) -> GenerationSettingsData:
         "num_predict": settings.num_predict,
         "temperature": settings.temperature,
         "top_p": settings.top_p,
+        "repeat_penalty": settings.repeat_penalty,
+        "reasoning": settings.reasoning,
     }

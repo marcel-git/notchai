@@ -21,6 +21,8 @@ class GenerationSettingsUpdate(BaseModel):
     num_predict: int = Field(ge=1, le=32768)
     temperature: float = Field(ge=0, le=2)
     top_p: float = Field(gt=0, le=1)
+    repeat_penalty: float = Field(ge=0.5, le=2)
+    reasoning: bool
 
     @field_validator("model_name")
     @classmethod
@@ -46,6 +48,8 @@ class PromptInspection(BaseModel):
     num_predict: int
     temperature: float
     top_p: float
+    repeat_penalty: float
+    reasoning: bool
     system_prompt: str
 
 

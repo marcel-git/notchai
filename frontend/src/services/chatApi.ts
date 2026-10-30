@@ -8,6 +8,7 @@ export async function streamChatReply(
   message: string,
   conversationId: string,
   onToken: (token: string) => void,
+  onGuidanceSaved: () => void,
 ) {
   await readEventStream(
     CHAT_ENDPOINT,
@@ -20,17 +21,20 @@ export async function streamChatReply(
       }),
     },
     onToken,
+    onGuidanceSaved,
   )
 }
 
 export async function streamRegeneratedReply(
   messageId: number,
   onToken: (token: string) => void,
+  onGuidanceSaved: () => void,
 ) {
   await readEventStream(
     `/api/messages/${messageId}/regenerate`,
     { method: 'POST' },
     onToken,
+    onGuidanceSaved,
   )
 }
 
@@ -38,6 +42,7 @@ async function readEventStream(
   endpoint: string,
   init: RequestInit,
   onToken: (token: string) => void,
+  onGuidanceSaved: () => void,
 ) {
   const response = await fetch(endpoint, init)
 
@@ -61,14 +66,16 @@ async function readEventStream(
       const eventBlocks = buffer.split(/\r?\n\r?\n/)
       buffer = eventBlocks.pop() ?? ''
       for (const block of eventBlocks) {
-        receivedDoneEvent = processEvent(block, onToken) || receivedDoneEvent
+        receivedDoneEvent =
+          processEvent(block, onToken, onGuidanceSaved) || receivedDoneEvent
       }
 
       if (done) break
     }
 
     if (buffer.trim()) {
-      receivedDoneEvent = processEvent(buffer, onToken) || receivedDoneEvent
+      receivedDoneEvent =
+        processEvent(buffer, onToken, onGuidanceSaved) || receivedDoneEvent
     }
   } finally {
     reader.releaseLock()
@@ -207,7 +214,11 @@ type ConversationData = ConversationSummary & {
   }>
 }
 
-function processEvent(block: string, onToken: (token: string) => void) {
+function processEvent(
+  block: string,
+  onToken: (token: string) => void,
+  onGuidanceSaved: () => void,
+) {
   let event = 'message'
   const dataLines: string[] = []
 
@@ -230,6 +241,10 @@ function processEvent(block: string, onToken: (token: string) => void) {
   }
 
   if (event === 'done') return true
+  if (event === 'guidance_saved') {
+    onGuidanceSaved()
+    return false
+  }
   if (event === 'error') {
     const message =
       typeof data === 'object' && data !== null && 'error' in data && typeof data.error === 'string'

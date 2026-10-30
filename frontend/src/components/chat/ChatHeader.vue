@@ -42,6 +42,10 @@
             <span>{{ formatEstimate(systemPromptTokens) }}</span>
           </div>
           <div class="tooltip-row">
+            <span>Global guidance</span>
+            <span>{{ formatEstimate(globalGuidanceTokens) }}</span>
+          </div>
+          <div class="tooltip-row">
             <span>Conversation history</span>
             <span>{{ formatEstimate(historyTokens) }}</span>
           </div>
@@ -59,14 +63,14 @@
           </div>
           <div class="tooltip-row">
             <span>Tools / functions</span>
-            <span>None sent</span>
+            <span>Available; not counted</span>
           </div>
           <p v-if="contextMeter?.context_note" class="tooltip-note">
             {{ contextMeter.context_note }}
           </p>
           <p v-else class="tooltip-note">
-            No separate cross-conversation memory is included. Counts are rough estimates and
-            exclude model message-formatting overhead.
+            Global guidance is included in every conversation. Counts are rough estimates and
+            exclude tool schemas and model message-formatting overhead.
           </p>
           <p v-if="contextError" class="tooltip-note tooltip-error">{{ contextError }}</p>
         </div>
@@ -139,7 +143,7 @@
   type DisplayedSection = {
     key: string
     label: string
-    role: ContextMeterData['sections'][number]['role'] | 'draft'
+    role: ContextMeterData['sections'][number]['role'] | 'guidance' | 'draft'
     estimated_tokens: number
     width: number
   }
@@ -149,7 +153,12 @@
     () => (props.contextMeter?.estimated_tokens_total ?? 0) + draftTokens.value,
   )
   const systemPromptTokens = computed(() =>
-    sumSections((section) => section.role === 'system'),
+    sumSections(
+      (section) => section.role === 'system' && section.label !== 'Global user guidance',
+    ),
+  )
+  const globalGuidanceTokens = computed(() =>
+    sumSections((section) => section.label === 'Global user guidance'),
   )
   const userHistoryTokens = computed(() =>
     sumSections((section) => section.role === 'user'),
@@ -170,7 +179,7 @@
     const sections: Omit<DisplayedSection, 'width'>[] = props.contextMeter.sections.map((section, index) => ({
       key: `${section.role}-${index}`,
       label: section.label,
-      role: section.role,
+      role: section.label === 'Global user guidance' ? 'guidance' : section.role,
       estimated_tokens: section.estimated_tokens,
     }))
     if (draftTokens.value) {
@@ -349,6 +358,10 @@
 
   .context-segment-system {
     background: #c4a96e;
+  }
+
+  .context-segment-guidance {
+    background: #b69a64;
   }
 
   .context-segment-user {

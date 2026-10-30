@@ -2,6 +2,30 @@ from collections.abc import Sequence
 
 from app.models.conversation import Character, Persona
 
+GUIDANCE_HEADER = "Global user guidance:"
+
+
+def build_guidance_section(guidance: Sequence[str]) -> str:
+    return "\n".join(
+        [
+            GUIDANCE_HEADER,
+            "Follow these explicit, lasting user preferences in every conversation:",
+            *[f"- {item}" for item in guidance],
+        ]
+    )
+
+
+def strip_guidance_section(
+    system_prompt: str,
+    guidance: Sequence[str],
+) -> str:
+    if not guidance:
+        return system_prompt
+    section = f"\n\n{build_guidance_section(guidance)}"
+    if system_prompt.endswith(section):
+        return system_prompt[: -len(section)]
+    return system_prompt
+
 
 def build_system_prompt(
     character: Character | None,
@@ -60,9 +84,17 @@ def build_prompt(
     persona: Persona | None,
     history: Sequence[dict[str, str]],
     system_prompt: str | None = None,
+    guidance: Sequence[str] = (),
 ) -> list[dict[str, str]]:
     if system_prompt is None:
         system_prompt = build_system_prompt(character, persona)
+    if guidance:
+        guidance_section = build_guidance_section(guidance)
+        system_prompt = (
+            f"{system_prompt}\n\n{guidance_section}"
+            if system_prompt
+            else guidance_section
+        )
     if not system_prompt:
         return list(history)
     return [{"role": "system", "content": system_prompt}, *history]

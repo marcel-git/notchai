@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from app.db import session as database
+from app.db import customization, session as database
 from app.db.migrations import upgrade_database
 from app.main import app
 
@@ -14,16 +14,23 @@ from app.main import app
 class RoleplayControlsTests(unittest.TestCase):
     def setUp(self) -> None:
         self.original_engine = database.engine
+        self.original_customization_engine = customization.engine
         self.temporary_directory = tempfile.TemporaryDirectory()
+        directory = Path(self.temporary_directory.name)
         self.engine = database.create_database_engine(
-            Path(self.temporary_directory.name) / "roleplay.db"
+            directory / "roleplay.db"
+        )
+        customization.engine = customization.create_customization_engine(
+            directory / "customization.db"
         )
         database.engine = self.engine
         upgrade_database(self.engine)
 
     def tearDown(self) -> None:
         self.engine.dispose()
+        customization.engine.dispose()
         database.engine = self.original_engine
+        customization.engine = self.original_customization_engine
         self.temporary_directory.cleanup()
 
     def test_latest_only_regeneration_settings_prompt_inspection_and_conversation_crud(self) -> None:
@@ -137,14 +144,20 @@ class RoleplayControlsTests(unittest.TestCase):
                     "num_predict": 768,
                     "temperature": 0.35,
                     "top_p": 0.82,
+                    "repeat_penalty": 1.24,
+                    "reasoning": False,
                 },
             )
             self.assertEqual(settings.status_code, 200)
             self.assertEqual(client.get("/settings").json()["model_name"], "local-test-model")
             self.assertEqual(client.get("/settings").json()["num_predict"], 768)
+            self.assertEqual(client.get("/settings").json()["repeat_penalty"], 1.24)
+            self.assertFalse(client.get("/settings").json()["reasoning"])
             prompt = client.get(f"/conversations/{conversation_id}/prompt").json()
             self.assertEqual(prompt["model_name"], "local-test-model")
             self.assertEqual(prompt["system_prompt"], custom_system_prompt)
+            self.assertEqual(prompt["repeat_penalty"], 1.24)
+            self.assertFalse(prompt["reasoning"])
             self.assertNotIn("messages", prompt)
 
             async def configured_response(_history, options):
@@ -152,6 +165,8 @@ class RoleplayControlsTests(unittest.TestCase):
                 self.assertEqual(options.num_predict, 768)
                 self.assertEqual(options.temperature, 0.35)
                 self.assertEqual(options.top_p, 0.82)
+                self.assertEqual(options.repeat_penalty, 1.24)
+                self.assertFalse(options.reasoning)
                 yield "Configured response"
 
             with patch("app.services.chat_service.stream_model", configured_response):

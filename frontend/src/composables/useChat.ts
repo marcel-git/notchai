@@ -14,6 +14,7 @@ export function useChat() {
   const conversations = ref<Conversation[]>([])
   const activeConversationId = ref<string | null>(null)
   const pendingConversationIds = ref(new Set<string>())
+  const guidanceSavedCount = ref(0)
   const loadedConversationIds = new Set<string>()
   const isLoading = ref(true)
   const loadError = ref('')
@@ -140,8 +141,8 @@ export function useChat() {
     })
     conversation.messages.push(response)
 
-    void runStream(conversation.id, response, (onToken) =>
-      streamChatReply(trimmedContent, conversation.id, onToken),
+    void runStream(conversation.id, response, (onToken, onGuidanceSaved) =>
+      streamChatReply(trimmedContent, conversation.id, onToken, onGuidanceSaved),
     )
     return true
   }
@@ -161,8 +162,8 @@ export function useChat() {
     response.isError = false
     response.isInterrupted = false
     response.isStreaming = true
-    void runStream(conversation.id, response, (onToken) =>
-      streamRegeneratedReply(messageId, onToken),
+    void runStream(conversation.id, response, (onToken, onGuidanceSaved) =>
+      streamRegeneratedReply(messageId, onToken, onGuidanceSaved),
     )
   }
 
@@ -202,15 +203,23 @@ export function useChat() {
   async function runStream(
     conversationId: string,
     response: ChatMessage,
-    start: (onToken: (token: string) => void) => Promise<void>,
+    start: (
+      onToken: (token: string) => void,
+      onGuidanceSaved: () => void,
+    ) => Promise<void>,
   ) {
     setPending(conversationId, true)
     loadError.value = ''
     let operationError = ''
     try {
-      await start((token) => {
-        response.content += token
-      })
+      await start(
+        (token) => {
+          response.content += token
+        },
+        () => {
+          guidanceSavedCount.value += 1
+        },
+      )
     } catch (error: unknown) {
       response.isError = true
       operationError = getErrorMessage(error)
@@ -237,6 +246,7 @@ export function useChat() {
     activeConversation,
     activeConversationId,
     conversations,
+    guidanceSavedCount,
     isLoading,
     isSending,
     loadError,

@@ -6,7 +6,9 @@
           <h2 id="prompt-title">{{ editable ? 'Customize system prompt' : 'System prompt' }}</h2>
           <p v-if="inspection" class="settings-line">
             {{ inspection.model_name }} · {{ inspection.num_predict }} tokens ·
-            temperature {{ inspection.temperature }} · top-p {{ inspection.top_p }}
+            temperature {{ inspection.temperature }} · top-p {{ inspection.top_p }} ·
+            repeat penalty {{ inspection.repeat_penalty }} ·
+            reasoning {{ inspection.reasoning ? 'on' : 'off' }}
           </p>
         </div>
         <button class="close-button" type="button" aria-label="Close prompt inspection" :disabled="saving" @click="close">

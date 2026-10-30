@@ -10,8 +10,10 @@ if __package__ in {None, ""}:
 
 from app.api.characters import router as characters_router
 from app.api.conversations import router as conversations_router
+from app.api.customizations import router as customizations_router
 from app.api.personas import router as personas_router
 from app.api.settings import router as settings_router
+from app.db.customization import initialize_customization_database
 from app.db.migrations import upgrade_database
 from app.db.session import session_scope
 from app.repositories.conversation_repository import interrupt_incomplete_messages
@@ -20,6 +22,7 @@ from app.repositories.conversation_repository import interrupt_incomplete_messag
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     upgrade_database()
+    initialize_customization_database()
     with session_scope() as session:
         interrupt_incomplete_messages(session)
     yield
@@ -30,6 +33,7 @@ app.include_router(conversations_router)
 app.include_router(characters_router)
 app.include_router(personas_router)
 app.include_router(settings_router)
+app.include_router(customizations_router)
 
 
 if __name__ == "__main__":

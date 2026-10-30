@@ -3,6 +3,8 @@ export type GenerationSettings = {
   num_predict: number
   temperature: number
   top_p: number
+  repeat_penalty: number
+  reasoning: boolean
 }
 
 export type PromptInspection = {
@@ -11,6 +13,8 @@ export type PromptInspection = {
   num_predict: number
   temperature: number
   top_p: number
+  repeat_penalty: number
+  reasoning: boolean
   system_prompt: string
 }
 

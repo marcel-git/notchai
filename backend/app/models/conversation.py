@@ -129,3 +129,5 @@ class ChatSettings(SQLModel, table=True):
     num_predict: int
     temperature: float
     top_p: float
+    repeat_penalty: float = Field(default=1.05)
+    reasoning: bool = Field(default=True)

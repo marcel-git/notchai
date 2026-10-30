@@ -7,6 +7,7 @@ from uuid import UUID
 from sqlmodel import Session
 
 from app.db.session import session_scope
+from app.db.customization import list_guidance
 from app.repositories.conversation_repository import (
     AssistantStatus,
     add_assistant_message,
@@ -17,7 +18,12 @@ from app.repositories.conversation_repository import (
 )
 from app.models.conversation import Conversation
 from app.repositories.settings_repository import get_generation_settings
-from app.services.model_service import GenerationOptions, REQUEST_TIMEOUT, stream_model
+from app.services.model_service import (
+    GenerationOptions,
+    GuidanceSavedEvent,
+    REQUEST_TIMEOUT,
+    stream_model,
+)
 from app.services.prompt_builder import build_prompt
 
 logger = logging.getLogger(__name__)
@@ -64,6 +70,7 @@ def _build_run(
         conversation.persona,
         get_model_history(session, conversation_id),
         system_prompt=conversation.system_prompt,
+        guidance=list_guidance(),
     )
     settings = get_generation_settings(session)
     options = GenerationOptions(**settings)
@@ -77,7 +84,11 @@ async def stream_chat(
     finished = False
     try:
         _update_assistant(run.assistant_message_id, response_content, "streaming")
-        async for token in stream_model(run.history, run.options):
+        async for model_event in stream_model(run.history, run.options):
+            if isinstance(model_event, GuidanceSavedEvent):
+                yield "guidance_saved", {}
+                continue
+            token = model_event
             response_content += token
             _update_assistant(run.assistant_message_id, response_content, "streaming")
             yield "token", {"token": token}

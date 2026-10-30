@@ -50,6 +50,31 @@
         <small class="field-note">Limits sampling to the most likely token mass.</small>
       </label>
 
+      <label class="field">
+        <span>Repeat penalty <output>{{ form.repeat_penalty.toFixed(2) }}</output></span>
+        <input
+          v-model.number="form.repeat_penalty"
+          type="range"
+          min="0.5"
+          max="2"
+          step="0.01"
+        />
+        <small class="field-note">
+          Discourages the model from repeating tokens. A value of 1.00 applies no penalty.
+        </small>
+      </label>
+
+      <label class="reasoning-field">
+        <input v-model="form.reasoning" type="checkbox" />
+        <span>
+          <strong>Enable model reasoning</strong>
+          <small class="field-note">
+            Allows the model to think through a response before answering. This may use more
+            response tokens and time.
+          </small>
+        </span>
+      </label>
+
       <p v-if="error" class="notice error" role="alert">{{ error }}</p>
       <p v-if="saved" class="notice success" role="status">Settings saved.</p>
       <div class="actions">
@@ -75,6 +100,8 @@
     num_predict: 4096,
     temperature: 0.7,
     top_p: 0.9,
+    repeat_penalty: 1.05,
+    reasoning: true,
   })
   const models = ref<string[]>([])
   const isModelMenuOpen = ref(false)
@@ -110,6 +137,7 @@
     } finally {
       loadingModels.value = false
     }
+
   })
 
   onUnmounted(() => document.removeEventListener('pointerdown', closeOnOutsidePointer))
@@ -147,6 +175,7 @@
       saving.value = false
     }
   }
+
 </script>
 
 <style scoped>
@@ -351,6 +380,27 @@
     accent-color: var(--color-gold);
   }
 
+  .reasoning-field {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    color: #cdd2c9;
+    font-size: 12px;
+  }
+
+  .reasoning-field input {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 auto;
+    margin: 1px 0 0;
+    accent-color: var(--color-gold);
+  }
+
+  .reasoning-field > span {
+    display: grid;
+    gap: 5px;
+  }
+
   .field-note {
     margin: 0;
     font-size: 10px;
@@ -417,5 +467,6 @@
     .settings-form {
       padding: 18px;
     }
+
   }
 </style>

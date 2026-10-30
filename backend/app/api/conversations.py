@@ -5,6 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Response, status
 from fastapi.responses import StreamingResponse
 
+from app.db.customization import list_guidance
 from app.db.session import session_scope
 from app.schemas.chat import ChatRequest, CreateConversationRequest
 from app.schemas.roleplay import (
@@ -30,7 +31,11 @@ from app.services.chat_service import (
     stream_chat,
 )
 from app.services.context_meter import build_context_meter
-from app.services.prompt_builder import build_system_prompt
+from app.services.prompt_builder import (
+    build_prompt,
+    build_system_prompt,
+    strip_guidance_section,
+)
 
 router = APIRouter()
 
@@ -92,7 +97,7 @@ async def preview_conversation_prompt(
         return PromptInspection(
             conversation_id=None,
             **settings,
-            system_prompt=build_system_prompt(character, persona),
+            system_prompt=_prompt_with_guidance(build_system_prompt(character, persona)),
         )
 
 
@@ -116,6 +121,8 @@ async def new_conversation(
         system_prompt = request.system_prompt
         if system_prompt is None:
             system_prompt = build_system_prompt(character, persona)
+        else:
+            system_prompt = strip_guidance_section(system_prompt, list_guidance())
         return create_conversation(
             session,
             request.id,
@@ -181,6 +188,7 @@ async def inspect_prompt(conversation_id: UUID) -> PromptInspection:
                 conversation.character,
                 conversation.persona,
             )
+        system_prompt = _prompt_with_guidance(system_prompt)
         settings = get_generation_settings(session)
         return PromptInspection(
             conversation_id=conversation_id,
@@ -210,3 +218,9 @@ def _streaming_response(run: ChatRun) -> StreamingResponse:
             "X-Accel-Buffering": "no",
         },
     )
+
+
+def _prompt_with_guidance(system_prompt: str) -> str:
+    return build_prompt(
+        None, None, [], system_prompt=system_prompt, guidance=list_guidance()
+    )[0]["content"]
