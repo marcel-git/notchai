@@ -23,6 +23,8 @@ class GenerationSettingsUpdate(BaseModel):
     top_p: float = Field(gt=0, le=1)
     repeat_penalty: float = Field(ge=0.5, le=2)
     reasoning: bool
+    summarize_trigger_tokens: int = Field(ge=256, le=131072)
+    summarize_trigger_messages: int = Field(ge=2, le=1000)
 
     @field_validator("model_name")
     @classmethod
@@ -50,6 +52,8 @@ class PromptInspection(BaseModel):
     top_p: float
     repeat_penalty: float
     reasoning: bool
+    summarize_trigger_tokens: int
+    summarize_trigger_messages: int
     system_prompt: str
 
 

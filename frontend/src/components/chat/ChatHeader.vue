@@ -4,30 +4,17 @@
       <button class="icon-button menu-button" aria-label="Open conversation menu" @click="emit('openSidebar')">
         <BIcon icon="list" />
       </button>
-      <div
-        v-if="conversationId"
-        class="context-meter"
-        :class="{
-          'context-meter-warning': usagePercent >= 80,
-          'context-meter-critical': usagePercent >= 95,
-        }"
-        role="img"
-        tabindex="0"
-        :aria-label="contextDescription"
-        aria-describedby="context-meter-tooltip"
-      >
+      <div v-if="conversationId" class="context-meter" :class="{
+        'context-meter-warning': usagePercent >= 80,
+        'context-meter-critical': usagePercent >= 95,
+      }" role="img" tabindex="0" :aria-label="contextDescription" aria-describedby="context-meter-tooltip">
         <span class="context-prefix">CTX</span>
         <span class="context-value">
           {{ contextMeter?.runtime_context_length ? `${usagePercent}%` : '--' }}
         </span>
         <div class="context-track" aria-hidden="true">
-          <span
-            v-for="section in displayedSections"
-            :key="section.key"
-            class="context-segment"
-            :class="`context-segment-${section.role}`"
-            :style="{ width: `${section.width}%` }"
-          ></span>
+          <span v-for="section in displayedSections" :key="section.key" class="context-segment"
+            :class="`context-segment-${section.role}`" :style="{ width: `${section.width}%` }"></span>
         </div>
         <div id="context-meter-tooltip" class="context-tooltip" role="tooltip">
           <div class="tooltip-heading">
@@ -94,14 +81,8 @@
             <BIcon icon="trash" />
           </button>
         </template>
-        <button
-          ref="sensoryButton"
-          class="icon-button sensory-button"
-          type="button"
-          aria-label="Open sensory board"
-          title="Sensory board"
-          @click="emit('openSensoryBoard')"
-        >
+        <button v-if="isChat" ref="sensoryButton" class="icon-button sensory-button" type="button"
+          aria-label="Open sensory board" title="Sensory board" @click="emit('openSensoryBoard')">
           <BIcon icon="hand-index-thumb" />
         </button>
       </div>
@@ -133,6 +114,8 @@
     inspectPrompt: []
     openSensoryBoard: []
   }>()
+
+  const isChat = computed(() => !!props.conversationId)
 
   function focusSensoryButton() {
     sensoryButton.value?.focus()
@@ -440,8 +423,8 @@
     padding: 2px 0;
   }
 
-  .tooltip-row > span:last-child,
-  .tooltip-detail > span:last-child {
+  .tooltip-row>span:last-child,
+  .tooltip-detail>span:last-child {
     color: #d3ddcf;
     white-space: nowrap;
   }
@@ -532,6 +515,7 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
+
     .context-segment,
     .context-tooltip {
       transition: none;

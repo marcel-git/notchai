@@ -9,6 +9,7 @@ export async function streamChatReply(
   conversationId: string,
   onToken: (token: string) => void,
   onGuidanceSaved: () => void,
+  onSummarizationStatus: (isActive: boolean) => void,
 ) {
   await readEventStream(
     CHAT_ENDPOINT,
@@ -22,6 +23,7 @@ export async function streamChatReply(
     },
     onToken,
     onGuidanceSaved,
+    onSummarizationStatus,
   )
 }
 
@@ -29,12 +31,14 @@ export async function streamRegeneratedReply(
   messageId: number,
   onToken: (token: string) => void,
   onGuidanceSaved: () => void,
+  onSummarizationStatus: (isActive: boolean) => void,
 ) {
   await readEventStream(
     `/api/messages/${messageId}/regenerate`,
     { method: 'POST' },
     onToken,
     onGuidanceSaved,
+    onSummarizationStatus,
   )
 }
 
@@ -43,6 +47,7 @@ async function readEventStream(
   init: RequestInit,
   onToken: (token: string) => void,
   onGuidanceSaved: () => void,
+  onSummarizationStatus: (isActive: boolean) => void,
 ) {
   const response = await fetch(endpoint, init)
 
@@ -67,7 +72,8 @@ async function readEventStream(
       buffer = eventBlocks.pop() ?? ''
       for (const block of eventBlocks) {
         receivedDoneEvent =
-          processEvent(block, onToken, onGuidanceSaved) || receivedDoneEvent
+          processEvent(block, onToken, onGuidanceSaved, onSummarizationStatus) ||
+          receivedDoneEvent
       }
 
       if (done) break
@@ -75,7 +81,8 @@ async function readEventStream(
 
     if (buffer.trim()) {
       receivedDoneEvent =
-        processEvent(buffer, onToken, onGuidanceSaved) || receivedDoneEvent
+        processEvent(buffer, onToken, onGuidanceSaved, onSummarizationStatus) ||
+        receivedDoneEvent
     }
   } finally {
     reader.releaseLock()
@@ -218,6 +225,7 @@ function processEvent(
   block: string,
   onToken: (token: string) => void,
   onGuidanceSaved: () => void,
+  onSummarizationStatus: (isActive: boolean) => void,
 ) {
   let event = 'message'
   const dataLines: string[] = []
@@ -243,6 +251,14 @@ function processEvent(
   if (event === 'done') return true
   if (event === 'guidance_saved') {
     onGuidanceSaved()
+    return false
+  }
+  if (event === 'summarizing') {
+    onSummarizationStatus(true)
+    return false
+  }
+  if (event === 'summary_finished') {
+    onSummarizationStatus(false)
     return false
   }
   if (event === 'error') {

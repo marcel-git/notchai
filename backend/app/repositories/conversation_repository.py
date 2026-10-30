@@ -86,16 +86,50 @@ def get_model_history(
     session: Session,
     conversation_id: UUID,
 ) -> list[dict[str, str]]:
+    return [
+        {"role": message["role"], "content": message["content"]}
+        for message in get_model_history_with_ids(session, conversation_id)
+    ]
+
+
+def get_model_history_with_ids(
+    session: Session,
+    conversation_id: UUID,
+    after_message_id: int | None = None,
+) -> list[dict[str, str]]:
+    query = select(Message).where(
+        Message.conversation_id == str(conversation_id),
+        Message.status == "completed",
+        Message.is_superseded.is_(False),
+    )
+    if after_message_id is not None:
+        query = query.where(Message.id > after_message_id)
     messages = session.exec(
-        select(Message)
-        .where(
-            Message.conversation_id == str(conversation_id),
-            Message.status == "completed",
-            Message.is_superseded.is_(False),
-        )
-        .order_by(Message.id)
+        query.order_by(Message.id)
     ).all()
-    return [{"role": message.role, "content": message.content} for message in messages]
+    return [
+        {
+            "id": str(message.id),
+            "role": message.role,
+            "content": message.content,
+        }
+        for message in messages
+    ]
+
+
+def update_context_summary(
+    session: Session,
+    conversation_id: UUID,
+    summary: str,
+    summarized_through_message_id: int,
+) -> None:
+    conversation = session.get(Conversation, str(conversation_id))
+    if conversation is None:
+        raise LookupError(f"Conversation {conversation_id} does not exist.")
+    if not summary.strip():
+        raise ValueError("A conversation summary cannot be empty.")
+    conversation.context_summary = summary
+    conversation.summarized_through_message_id = summarized_through_message_id
 
 
 def add_user_message(

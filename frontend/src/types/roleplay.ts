@@ -5,6 +5,8 @@ export type GenerationSettings = {
   top_p: number
   repeat_penalty: number
   reasoning: boolean
+  summarize_trigger_tokens: number
+  summarize_trigger_messages: number
 }
 
 export type PromptInspection = {
@@ -15,6 +17,8 @@ export type PromptInspection = {
   top_p: number
   repeat_penalty: number
   reasoning: boolean
+  summarize_trigger_tokens: number
+  summarize_trigger_messages: number
   system_prompt: string
 }
 

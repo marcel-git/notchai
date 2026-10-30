@@ -75,6 +75,39 @@
         </span>
       </label>
 
+      <div class="summary-settings">
+        <div class="summary-fields">
+          <label class="field">
+            <span>Summarize at (tokens)</span>
+            <input
+              v-model.number="form.summarize_trigger_tokens"
+              type="number"
+              min="256"
+              max="131072"
+              step="1"
+              required
+            />
+          </label>
+
+          <label class="field">
+            <span>Or at (messages)</span>
+            <input
+              v-model.number="form.summarize_trigger_messages"
+              type="number"
+              min="2"
+              max="1000"
+              step="1"
+              required
+            />
+          </label>
+        </div>
+        <small class="field-note">
+          Reaching either limit summarizes older conversation turns for future replies. The
+          original transcript remains visible, and the system prompt and global guidance are
+          kept separate from the summary.
+        </small>
+      </div>
+
       <p v-if="error" class="notice error" role="alert">{{ error }}</p>
       <p v-if="saved" class="notice success" role="status">Settings saved.</p>
       <div class="actions">
@@ -102,6 +135,8 @@
     top_p: 0.9,
     repeat_penalty: 1.05,
     reasoning: true,
+    summarize_trigger_tokens: 16384,
+    summarize_trigger_messages: 40,
   })
   const models = ref<string[]>([])
   const isModelMenuOpen = ref(false)
@@ -185,6 +220,9 @@
     margin: 0 auto;
     padding: 38px 32px;
     overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-color: rgba(163, 175, 160, 0.22) transparent;
+    scrollbar-width: thin;
   }
 
   .page-header {
@@ -219,6 +257,17 @@
     border: 1px solid var(--color-line);
     border-radius: 12px;
     background: rgba(23, 33, 27, 0.82);
+  }
+
+  .summary-settings {
+    display: grid;
+    gap: 8px;
+  }
+
+  .summary-fields {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
   }
 
   .field {
@@ -468,5 +517,8 @@
       padding: 18px;
     }
 
+    .summary-fields {
+      grid-template-columns: 1fr;
+    }
   }
 </style>

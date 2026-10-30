@@ -4,10 +4,10 @@ from sqlmodel import Session
 
 from app.db.customization import list_guidance
 from app.models.conversation import Conversation
-from app.repositories.conversation_repository import get_model_history
+from app.repositories.conversation_repository import get_model_history_with_ids
 from app.repositories.settings_repository import get_generation_settings
 from app.schemas.roleplay import ContextMeterData, ContextSection
-from app.services.model_service import get_runtime_context_length
+from app.services.model_service import SUMMARY_MESSAGE_PREFIX, get_runtime_context_length
 from app.services.prompt_builder import build_guidance_section, build_prompt
 
 
@@ -15,7 +15,20 @@ def build_context_meter(
     session: Session,
     conversation: Conversation,
 ) -> ContextMeterData:
-    history = get_model_history(session, UUID(conversation.id))
+    history = get_model_history_with_ids(
+        session,
+        UUID(conversation.id),
+        conversation.summarized_through_message_id,
+    )
+    if conversation.context_summary is not None:
+        history.insert(
+            0,
+            {
+                "id": "conversation-summary",
+                "role": "user",
+                "content": f"{SUMMARY_MESSAGE_PREFIX}{conversation.context_summary}",
+            },
+        )
     guidance = list_guidance()
     context = build_prompt(
         conversation.character,

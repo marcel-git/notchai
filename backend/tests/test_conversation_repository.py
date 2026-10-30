@@ -31,7 +31,11 @@ from app.repositories.conversation_repository import (
     update_assistant_message,
 )
 from app.services.chat_service import prepare_message, stream_chat
-from app.services.model_service import GuidanceSavedEvent
+from app.services.model_service import (
+    ContextSummaryEvent,
+    GuidanceSavedEvent,
+    SummarizationStatusEvent,
+)
 
 
 class ConversationRepositoryTests(unittest.TestCase):
@@ -102,11 +106,15 @@ class ConversationRepositoryTests(unittest.TestCase):
         run = prepare_message(self.conversation_id, "Hello")
         with database.session_scope() as session:
             pending = get_conversation(session, self.conversation_id)
+        user_message_id = pending["messages"][0]["id"]
         self.assertEqual(pending["messages"][0]["content"], "Hello")
         self.assertEqual(pending["messages"][1]["status"], "pending")
 
-        async def fake_stream(history, _options):
-            self.assertEqual(history[-1], {"role": "user", "content": "Hello"})
+        async def fake_stream(history, _options, _summarized_through_message_id=None):
+            self.assertEqual(
+                history[-1],
+                {"id": str(user_message_id), "role": "user", "content": "Hello"},
+            )
             yield "Hello back"
 
         async def collect_events():
@@ -152,6 +160,68 @@ class ConversationRepositoryTests(unittest.TestCase):
                 ("done", {}),
             ],
         )
+
+    def test_stream_chat_surfaces_summarization_status(self) -> None:
+        run = prepare_message(self.conversation_id, "Continue the scene.")
+
+        async def fake_stream(_history, _options):
+            yield SummarizationStatusEvent(True)
+            yield SummarizationStatusEvent(False)
+            yield "The scene continues."
+
+        async def collect_events():
+            return [event async for event in stream_chat(run)]
+
+        with patch("app.services.chat_service.stream_model", fake_stream):
+            events = asyncio.run(collect_events())
+
+        self.assertEqual(
+            events,
+            [
+                ("summarizing", {}),
+                ("summary_finished", {}),
+                ("token", {"token": "The scene continues."}),
+                ("done", {}),
+            ],
+        )
+
+    def test_summarized_context_is_reused_without_changing_visible_transcript(self) -> None:
+        run = prepare_message(self.conversation_id, "First scene.")
+        summarized_through = int(run.history[-1]["id"])
+
+        async def fake_stream(_history, _options):
+            yield ContextSummaryEvent("The party entered the archive.", summarized_through)
+            yield "They found a map."
+
+        async def collect_events():
+            return [event async for event in stream_chat(run)]
+
+        with patch("app.services.chat_service.stream_model", fake_stream):
+            events = asyncio.run(collect_events())
+        self.assertEqual(events[-1], ("done", {}))
+
+        with database.session_scope() as session:
+            conversation = session.get(Conversation, str(self.conversation_id))
+            self.assertEqual(
+                conversation.context_summary,
+                "The party entered the archive.",
+            )
+            self.assertEqual(
+                conversation.summarized_through_message_id,
+                summarized_through,
+            )
+            visible_history = get_conversation(session, self.conversation_id)
+            self.assertEqual(visible_history["messages"][0]["content"], "First scene.")
+            self.assertEqual(
+                visible_history["messages"][1]["content"],
+                "They found a map.",
+            )
+
+        next_run = prepare_message(self.conversation_id, "What is on the map?")
+        self.assertEqual(next_run.history[0]["id"], "conversation-summary")
+        self.assertIn("The party entered the archive.", next_run.history[0]["content"])
+        self.assertNotIn("First scene.", [item["content"] for item in next_run.history])
+        self.assertEqual(next_run.history[-1]["content"], "What is on the map?")
 
     def test_initial_migration_adopts_existing_tables_without_losing_data(self) -> None:
         existing_engine = database.create_database_engine(
@@ -224,7 +294,7 @@ class ConversationRepositoryTests(unittest.TestCase):
                 revision = connection.execute(
                     text("SELECT version_num FROM alembic_version")
                 ).scalar_one()
-            self.assertEqual(revision, "0007_reasoning_setting")
+            self.assertEqual(revision, "0008_summarization_settings")
         finally:
             existing_engine.dispose()
 

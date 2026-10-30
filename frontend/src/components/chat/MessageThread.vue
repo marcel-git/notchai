@@ -15,7 +15,16 @@
         </div>
 
         <div v-if="message.content" class="message-markdown" v-html="renderedContents[index]"></div>
-        <span v-if="message.isStreaming" class="typing-indicator" aria-label="Generating response"></span>
+        <span
+          v-if="message.isStreaming && message.isSummarizing"
+          class="summarizing-indicator"
+          role="status"
+        >Summarizing conversation…</span>
+        <span
+          v-else-if="message.isStreaming"
+          class="typing-indicator"
+          aria-label="Generating response"
+        ></span>
         <div v-if="message.isError" class="message-error-label">Response failed</div>
         <div v-else-if="message.isInterrupted" class="message-interrupted-label">Generation interrupted</div>
 
@@ -150,6 +159,13 @@
     border-radius: 50%;
     background: #c5ae78;
     animation: typing-pulse 900ms ease-in-out infinite alternate;
+  }
+
+  .summarizing-indicator {
+    display: inline-block;
+    color: var(--color-muted);
+    font-size: 10px;
+    font-style: italic;
   }
 
   @keyframes typing-pulse {

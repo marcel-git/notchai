@@ -141,8 +141,14 @@ export function useChat() {
     })
     conversation.messages.push(response)
 
-    void runStream(conversation.id, response, (onToken, onGuidanceSaved) =>
-      streamChatReply(trimmedContent, conversation.id, onToken, onGuidanceSaved),
+    void runStream(conversation.id, response, (onToken, onGuidanceSaved, onSummarizationStatus) =>
+      streamChatReply(
+        trimmedContent,
+        conversation.id,
+        onToken,
+        onGuidanceSaved,
+        onSummarizationStatus,
+      ),
     )
     return true
   }
@@ -162,8 +168,13 @@ export function useChat() {
     response.isError = false
     response.isInterrupted = false
     response.isStreaming = true
-    void runStream(conversation.id, response, (onToken, onGuidanceSaved) =>
-      streamRegeneratedReply(messageId, onToken, onGuidanceSaved),
+    void runStream(conversation.id, response, (onToken, onGuidanceSaved, onSummarizationStatus) =>
+      streamRegeneratedReply(
+        messageId,
+        onToken,
+        onGuidanceSaved,
+        onSummarizationStatus,
+      ),
     )
   }
 
@@ -206,6 +217,7 @@ export function useChat() {
     start: (
       onToken: (token: string) => void,
       onGuidanceSaved: () => void,
+      onSummarizationStatus: (isActive: boolean) => void,
     ) => Promise<void>,
   ) {
     setPending(conversationId, true)
@@ -214,10 +226,14 @@ export function useChat() {
     try {
       await start(
         (token) => {
+          response.isSummarizing = false
           response.content += token
         },
         () => {
           guidanceSavedCount.value += 1
+        },
+        (isActive) => {
+          response.isSummarizing = isActive
         },
       )
     } catch (error: unknown) {
@@ -226,6 +242,7 @@ export function useChat() {
       response.content = operationError
     } finally {
       response.isStreaming = false
+      response.isSummarizing = false
       await refreshConversation(conversationId)
       const conversation = conversations.value.find((item) => item.id === conversationId)
       if (operationError && !conversation?.messages.at(-1)?.isError) {

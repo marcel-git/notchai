@@ -12,16 +12,20 @@ from app.repositories.conversation_repository import (
     AssistantStatus,
     add_assistant_message,
     add_user_message,
-    get_model_history,
+    get_model_history_with_ids,
     prepare_assistant_regeneration,
+    update_context_summary,
     update_assistant_message,
 )
 from app.models.conversation import Conversation
 from app.repositories.settings_repository import get_generation_settings
 from app.services.model_service import (
     GenerationOptions,
+    ContextSummaryEvent,
     GuidanceSavedEvent,
     REQUEST_TIMEOUT,
+    SUMMARY_MESSAGE_PREFIX,
+    SummarizationStatusEvent,
     stream_model,
 )
 from app.services.prompt_builder import build_prompt
@@ -31,9 +35,11 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class ChatRun:
+    conversation_id: UUID
     history: list[dict[str, str]]
     assistant_message_id: int
     options: GenerationOptions
+    summarized_through_message_id: int | None
 
 
 class EmptyModelResponseError(RuntimeError):
@@ -65,16 +71,36 @@ def _build_run(
     assistant_message_id: int,
 ) -> ChatRun:
     conversation_id = UUID(conversation.id)
-    history = build_prompt(
+    history = get_model_history_with_ids(
+        session,
+        conversation_id,
+        conversation.summarized_through_message_id,
+    )
+    if conversation.context_summary is not None:
+        history.insert(
+            0,
+            {
+                "id": "conversation-summary",
+                "role": "user",
+                "content": f"{SUMMARY_MESSAGE_PREFIX}{conversation.context_summary}",
+            },
+        )
+    prompt = build_prompt(
         conversation.character,
         conversation.persona,
-        get_model_history(session, conversation_id),
+        history,
         system_prompt=conversation.system_prompt,
         guidance=list_guidance(),
     )
     settings = get_generation_settings(session)
     options = GenerationOptions(**settings)
-    return ChatRun(history, assistant_message_id, options)
+    return ChatRun(
+        conversation_id,
+        prompt,
+        assistant_message_id,
+        options,
+        conversation.summarized_through_message_id,
+    )
 
 
 async def stream_chat(
@@ -84,9 +110,25 @@ async def stream_chat(
     finished = False
     try:
         _update_assistant(run.assistant_message_id, response_content, "streaming")
-        async for model_event in stream_model(run.history, run.options):
+        model_events = (
+            stream_model(run.history, run.options)
+            if run.summarized_through_message_id is None
+            else stream_model(
+                run.history,
+                run.options,
+                run.summarized_through_message_id,
+            )
+        )
+        async for model_event in model_events:
             if isinstance(model_event, GuidanceSavedEvent):
                 yield "guidance_saved", {}
+                continue
+            if isinstance(model_event, SummarizationStatusEvent):
+                event = "summarizing" if model_event.is_active else "summary_finished"
+                yield event, {}
+                continue
+            if isinstance(model_event, ContextSummaryEvent):
+                _update_context_summary(run.conversation_id, model_event)
                 continue
             token = model_event
             response_content += token
@@ -123,6 +165,19 @@ def _update_assistant(
 ) -> None:
     with session_scope() as session:
         update_assistant_message(session, message_id, content, status)
+
+
+def _update_context_summary(
+    conversation_id: UUID,
+    event: ContextSummaryEvent,
+) -> None:
+    with session_scope() as session:
+        update_context_summary(
+            session,
+            conversation_id,
+            event.summary,
+            event.summarized_through_message_id,
+        )
 
 
 def describe_model_error(

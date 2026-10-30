@@ -87,6 +87,8 @@ class Conversation(SQLModel, table=True):
         ),
     )
     system_prompt: str | None = Field(default=None, sa_type=Text)
+    context_summary: str | None = Field(default=None, sa_type=Text)
+    summarized_through_message_id: int | None = Field(default=None)
     created_at: str = Field(default_factory=utc_timestamp, sa_type=Text)
     updated_at: str = Field(default_factory=utc_timestamp, sa_type=Text)
     messages: list["Message"] = Relationship(
@@ -131,3 +133,5 @@ class ChatSettings(SQLModel, table=True):
     top_p: float
     repeat_penalty: float = Field(default=1.05)
     reasoning: bool = Field(default=True)
+    summarize_trigger_tokens: int = Field(default=16384)
+    summarize_trigger_messages: int = Field(default=40)

@@ -148,7 +148,10 @@ class ProfileTests(unittest.TestCase):
         self.assertIn("Mira", system_prompt)
         self.assertIn("Persona played by the user", system_prompt)
         self.assertIn("Traveler", system_prompt)
-        self.assertEqual(run.history[-1], {"role": "user", "content": "Hello"})
+        self.assertEqual(
+            run.history[-1],
+            {"id": "1", "role": "user", "content": "Hello"},
+        )
 
 
 if __name__ == "__main__":

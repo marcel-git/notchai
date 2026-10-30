@@ -146,6 +146,8 @@ class RoleplayControlsTests(unittest.TestCase):
                     "top_p": 0.82,
                     "repeat_penalty": 1.24,
                     "reasoning": False,
+                    "summarize_trigger_tokens": 12288,
+                    "summarize_trigger_messages": 32,
                 },
             )
             self.assertEqual(settings.status_code, 200)
@@ -153,11 +155,21 @@ class RoleplayControlsTests(unittest.TestCase):
             self.assertEqual(client.get("/settings").json()["num_predict"], 768)
             self.assertEqual(client.get("/settings").json()["repeat_penalty"], 1.24)
             self.assertFalse(client.get("/settings").json()["reasoning"])
+            self.assertEqual(
+                client.get("/settings").json()["summarize_trigger_tokens"],
+                12288,
+            )
+            self.assertEqual(
+                client.get("/settings").json()["summarize_trigger_messages"],
+                32,
+            )
             prompt = client.get(f"/conversations/{conversation_id}/prompt").json()
             self.assertEqual(prompt["model_name"], "local-test-model")
             self.assertEqual(prompt["system_prompt"], custom_system_prompt)
             self.assertEqual(prompt["repeat_penalty"], 1.24)
             self.assertFalse(prompt["reasoning"])
+            self.assertEqual(prompt["summarize_trigger_tokens"], 12288)
+            self.assertEqual(prompt["summarize_trigger_messages"], 32)
             self.assertNotIn("messages", prompt)
 
             async def configured_response(_history, options):
@@ -167,6 +179,8 @@ class RoleplayControlsTests(unittest.TestCase):
                 self.assertEqual(options.top_p, 0.82)
                 self.assertEqual(options.repeat_penalty, 1.24)
                 self.assertFalse(options.reasoning)
+                self.assertEqual(options.summarize_trigger_tokens, 12288)
+                self.assertEqual(options.summarize_trigger_messages, 32)
                 yield "Configured response"
 
             with patch("app.services.chat_service.stream_model", configured_response):

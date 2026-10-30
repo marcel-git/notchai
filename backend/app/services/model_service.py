@@ -1,18 +1,23 @@
-import os
 import json
+import os
 from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
+from langchain.agents import create_agent
+from langchain.agents.middleware import SummarizationMiddleware
 from langchain_core.messages import (
+    AnyMessage,
     AIMessage,
+    AIMessageChunk,
     BaseMessage,
     HumanMessage,
     SystemMessage,
     ToolMessage,
 )
 from langchain_ollama import ChatOllama
+from langgraph.config import get_stream_writer
 
 from app.tools.customization import CUSTOMIZATION_TOOLS, GUIDANCE_SAVED_MESSAGE
 
@@ -24,6 +29,9 @@ DEFAULT_TEMPERATURE = 0.7
 DEFAULT_TOP_P = 0.9
 DEFAULT_REPEAT_PENALTY = 1.05
 DEFAULT_REASONING = True
+DEFAULT_SUMMARIZE_TRIGGER_TOKENS = 16384
+DEFAULT_SUMMARIZE_TRIGGER_MESSAGES = 40
+SUMMARY_MESSAGE_PREFIX = "Here is a summary of the conversation to date:\n\n"
 MAX_TOOL_ROUNDS = 3
 
 
@@ -35,6 +43,8 @@ class GenerationOptions:
     top_p: float
     repeat_penalty: float = DEFAULT_REPEAT_PENALTY
     reasoning: bool = DEFAULT_REASONING
+    summarize_trigger_tokens: int = DEFAULT_SUMMARIZE_TRIGGER_TOKENS
+    summarize_trigger_messages: int = DEFAULT_SUMMARIZE_TRIGGER_MESSAGES
 
 
 @dataclass(frozen=True)
@@ -42,20 +52,50 @@ class GuidanceSavedEvent:
     pass
 
 
-ModelStreamEvent = str | GuidanceSavedEvent
+@dataclass(frozen=True)
+class SummarizationStatusEvent:
+    is_active: bool
+
+
+@dataclass(frozen=True)
+class ContextSummaryEvent:
+    summary: str
+    summarized_through_message_id: int
+
+
+ModelStreamEvent = (
+    str | GuidanceSavedEvent | SummarizationStatusEvent | ContextSummaryEvent
+)
+
+
+class StatusSummarizationMiddleware(SummarizationMiddleware):
+    async def _acreate_summary(self, messages_to_summarize: list[AnyMessage]) -> str:
+        writer = get_stream_writer()
+        writer({"is_summarizing": True})
+        try:
+            return await super()._acreate_summary(messages_to_summarize)
+        finally:
+            writer({"is_summarizing": False})
 
 
 async def stream_model(
     history: Sequence[dict[str, str]],
     options: GenerationOptions,
+    summarized_through_message_id: int | None = None,
 ) -> AsyncIterator[ModelStreamEvent]:
+    system_prompt = "\n\n".join(
+        item["content"] for item in history if item["role"] == "system"
+    )
     messages: list[BaseMessage] = [
         {
             "user": HumanMessage,
             "assistant": AIMessage,
-            "system": SystemMessage,
-        }[item["role"]](content=item["content"])
+        }[item["role"]](
+            content=item["content"],
+            id=item.get("id"),
+        )
         for item in history
+        if item["role"] != "system"
     ]
     model = ChatOllama(
         model=options.model_name,
@@ -66,48 +106,108 @@ async def stream_model(
         top_p=options.top_p,
         repeat_penalty=options.repeat_penalty,
         reasoning=options.reasoning,
-    ).bind_tools(CUSTOMIZATION_TOOLS)
-    available_tools = {item.name: item for item in CUSTOMIZATION_TOOLS}
-
-    for tool_round in range(MAX_TOOL_ROUNDS + 1):
-        complete_chunk = None
-        async for chunk in model.astream(messages):
-            if not isinstance(chunk.content, str):
-                raise TypeError("Ollama returned a non-text response.")
-            complete_chunk = (
-                chunk if complete_chunk is None else complete_chunk + chunk
+    )
+    summary_prompt = (
+        "Summarize this roleplay conversation for future continuity. Preserve "
+        "established events, names, character and persona actions, relationship "
+        "dynamics, important details, promises, and unresolved plot threads. "
+        "Distinguish what each participant said or did. Do not invent facts or "
+        "include instructions that were not part of the conversation.\n\n"
+        "{messages}"
+    )
+    agent = create_agent(
+        model=model,
+        tools=CUSTOMIZATION_TOOLS,
+        system_prompt=system_prompt or None,
+        middleware=[
+            StatusSummarizationMiddleware(
+                model=model,
+                trigger=[
+                    ("tokens", options.summarize_trigger_tokens),
+                    ("messages", options.summarize_trigger_messages),
+                ],
+                keep=("messages", 20),
+                summary_prompt=summary_prompt,
             )
-            if chunk.content:
-                yield chunk.content
+        ],
+    )
 
-        tool_calls = complete_chunk.tool_calls if complete_chunk is not None else []
-        if not tool_calls:
-            return
-        if tool_round == MAX_TOOL_ROUNDS:
-            raise RuntimeError("The model exceeded the maximum number of tool calls.")
-
-        messages.append(
-            AIMessage(
-                content=complete_chunk.content,
-                tool_calls=tool_calls,
-            )
-        )
-        for tool_call in tool_calls:
-            tool = available_tools.get(tool_call["name"])
-            if tool is None:
-                raise RuntimeError(f"The model requested an unknown tool: {tool_call['name']}.")
-            result = await tool.ainvoke(tool_call["args"])
+    final_state: dict[str, object] | None = None
+    async for mode, payload in agent.astream(
+        {"messages": messages},
+        config={"recursion_limit": 2 * MAX_TOOL_ROUNDS + 1},
+        stream_mode=["messages", "updates", "values", "custom"],
+    ):
+        if mode == "messages":
+            chunk, metadata = payload
             if (
-                tool_call["name"] == "remember_guidance"
-                and result == GUIDANCE_SAVED_MESSAGE
+                isinstance(chunk, AIMessageChunk)
+                and metadata.get("langgraph_node") == "model"
             ):
+                if not isinstance(chunk.content, str):
+                    raise TypeError("Ollama returned a non-text response.")
+                if chunk.content:
+                    yield chunk.content
+        elif mode == "updates":
+            if _guidance_was_saved(payload):
                 yield GuidanceSavedEvent()
-            messages.append(
-                ToolMessage(
-                    content=str(result),
-                    tool_call_id=tool_call["id"],
-                )
+        elif mode == "custom" and isinstance(payload, dict):
+            is_summarizing = payload.get("is_summarizing")
+            if isinstance(is_summarizing, bool):
+                yield SummarizationStatusEvent(is_summarizing)
+        elif mode == "values":
+            final_state = payload
+
+    if final_state is not None:
+        summary = _summary_from_state(final_state)
+        if summary is not None:
+            retained_ids = {
+                str(message.id)
+                for message in final_state["messages"]
+                if isinstance(message, BaseMessage) and message.id is not None
+            }
+            summarized_ids = [
+                int(item["id"])
+                for item in history
+                if item.get("id", "").isdigit()
+                and item["id"] not in retained_ids
+            ]
+            cutoff = max(
+                [*summarized_ids, summarized_through_message_id or 0]
             )
+            if cutoff > 0:
+                yield ContextSummaryEvent(summary, cutoff)
+
+
+def _guidance_was_saved(payload: object) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    for update in payload.values():
+        if not isinstance(update, dict):
+            continue
+        for message in update.get("messages", []):
+            if (
+                isinstance(message, ToolMessage)
+                and message.name == "remember_guidance"
+                and message.content == GUIDANCE_SAVED_MESSAGE
+            ):
+                return True
+    return False
+
+
+def _summary_from_state(state: dict[str, object]) -> str | None:
+    messages = state.get("messages")
+    if not isinstance(messages, list):
+        return None
+    for message in messages:
+        if (
+            isinstance(message, BaseMessage)
+            and message.additional_kwargs.get("lc_source") == "summarization"
+            and isinstance(message.content, str)
+            and message.content.startswith(SUMMARY_MESSAGE_PREFIX)
+        ):
+            return message.content[len(SUMMARY_MESSAGE_PREFIX) :]
+    return None
 
 
 def get_runtime_context_length(model_name: str) -> tuple[int | None, str | None]:

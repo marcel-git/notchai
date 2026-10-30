@@ -7,6 +7,7 @@ export type ChatMessage = {
   time: string
   isSuperseded?: boolean
   isStreaming?: boolean
+  isSummarizing?: boolean
   isError?: boolean
   isInterrupted?: boolean
 }
